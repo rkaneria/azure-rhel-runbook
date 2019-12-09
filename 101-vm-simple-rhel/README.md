@@ -1,9 +1,6 @@
 # Deployment of Red Hat Enterprise Linux VM (RHEL 7.7)
 
 
-<a href="http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2FAzure%2Fazure-quickstart-templates%2Fmaster%2F101-vm-simple-rhel%2Fazuredeploy.json" target="_blank">
-
-
 This template allows deploying a Red Hat Enterprise Linux VM RHEL 7.7, using the latest image for the selected RHEL version. This will deploy a Standard A1 VM in the location of your chosen resource group.
 
 Independently form this template you can deploy a blank RHEL VM using the following Azure CLI commands (adjust parameters as needed):
