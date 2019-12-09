@@ -1,0 +1,7 @@
+- name: Configure RHEL servers
+  gather_facts: true
+  hosts: all
+
+  roles:
+    - extended-os-config
+

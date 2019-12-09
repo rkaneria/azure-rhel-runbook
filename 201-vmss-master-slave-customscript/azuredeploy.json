@@ -1,0 +1,317 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "masterNodeCount": {
+      "type": "int",
+      "minValue": 1,
+      "maxValue": 2,
+      "metadata": {
+        "description": "Number of master node in VMSS; if singlePlacementGroup is true (the default), then this value must be 100 or less; if singlePlacementGroup is false, then ths value must be 50 or less"
+      }
+    },
+    "masterNodeSku": {
+      "defaultValue": "Standard_A1",
+      "type": "string",
+      "metadata": {
+        "description": "Size of VMs in the VM Scale Set for master node."
+      }
+    },
+    "slaveNodeSku": {
+      "defaultValue": "Standard_A1",
+      "type": "string",
+      "metadata": {
+        "description": "Size of VMs in the VM Scale Set for slave node."
+      }
+    },
+    "slaveNodeCount": {
+      "type": "int",
+      "minValue": 2,
+      "maxValue": 3,
+      "metadata": {
+        "description": "Number of slave nodes in VMSS; if singlePlacementGroup is true (the default), then this value must be 100 or less; if singlePlacementGroup is false, then ths value must be 100 or less"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Admin username on all VMs."
+      }
+    },
+    "osImagePublisher": {
+      "type": "string",
+      "defaultValue": "RedHat",
+      "metadata": {
+        "description": "Maps to the publisher in the Azure Stack Platform Image Repository manifest file."
+      }
+    },
+    "osImageOffer": {
+      "type": "string",
+      "defaultValue": "RHEL",
+      "metadata": {
+        "description": "Maps to the Offer in the Azure Stack Platform Image Repository manifest file."
+      }
+    },
+    "osImageSku": {
+      "type": "string",
+      "defaultValue": "7.7",
+      "metadata": {
+        "description": "The RHEL version for the VM. This will pick a fully patched image of this given RHEL version. Default value: 7.7"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    },
+    "authenticationType": {
+      "type": "string",
+      "defaultValue": "sshPublicKey",
+      "allowedValues": [
+        "sshPublicKey",
+        "password"
+      ],
+      "metadata": {
+        "description": "Type of authentication to use on the Virtual Machine. SSH key is recommended."
+      }
+    },
+    "adminPasswordOrKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "SSH Key or password for the Virtual Machine. SSH key is recommended."
+      }
+    }
+  },
+  "variables": {
+    "vmssName": "[concat('vmss', uniqueString(resourceGroup().id, deployment().name))]",
+    "vnetName": "[concat('vnet-', variables('vmssName'))]",
+    "masterNicName": "[toLower(concat('nic-master', variables('vmssName')))]",
+    "slaveNicName": "[toLower(concat('nic-slave', variables('vmssName')))]",
+    "subnetMaster": "[concat('mastersubnet-', variables('vmssName'))]",
+    "subnetSlave": "[concat('slavesubnet-', variables('vmssName'))]",
+    "masterPublicIPAddressName": "[toLower(concat('pip-master', variables('vmssName')))]",
+    "slavePublicIPAddressName": "[toLower(concat('pip-slave', variables('vmssName')))]",
+    "masterSubnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetMaster'))]",
+    "slaveSubnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetSlave'))]",
+    "linuxConfiguration": {
+      "disablePasswordAuthentication": true,
+      "ssh": {
+        "publicKeys": [
+          {
+            "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+            "keyData": "[parameters('adminPasswordOrKey')]"
+          }
+        ]
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('vnetName')]",
+      "apiVersion": "2017-06-01",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('subnetMaster')]",
+            "properties": {
+              "addressPrefix": "10.0.0.0/24"
+            }
+          },
+          {
+            "name": "[variables('subnetSlave')]",
+            "properties": {
+              "addressPrefix": "10.0.1.0/24"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[variables('masterPublicIPAddressName')]",
+      "apiVersion": "2017-06-01",
+      "location": "[parameters('location')]",
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic"
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[variables('slavePublicIPAddressName')]",
+      "apiVersion": "2017-06-01",
+      "location": "[parameters('location')]",
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic"
+      }
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('masterNicName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', variables('masterPublicIPAddressName'))]",
+        "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig-master",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('masterPublicIPAddressName'))]"
+              },
+              "subnet": {
+                "id": "[variables('masterSubnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('slaveNicName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', variables('slavePublicIPAddressName'))]",
+        "[concat('Microsoft.Network/virtualNetworks/', variables('vnetName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig-slave",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('slavePublicIPAddressName'))]"
+              },
+              "subnet": {
+                "id": "[variables('slaveSubnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachineScaleSets",
+      "sku": {
+        "name": "[parameters('masterNodeSku')]",
+        "tier": "Standard",
+        "capacity": "[parameters('masterNodeCount')]"
+      },
+      "name": "[concat(variables('vmssName'), '-master-node')]",
+      "apiVersion": "2017-12-01",
+      "location": "[parameters('location')]",
+      "tags": {
+        "AnsibleRole": "Master",
+        "AnsibleProject": "Ansible-project",
+        "Ansible-Key": "UUID"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkInterfaces/', variables('masterNicName'))]"
+      ],
+      "properties": {
+        "upgradePolicy": {
+          "mode": "Manual"
+        },
+        "virtualMachineProfile": {
+          "storageProfile": {
+            "osDisk": {
+              "caching": "ReadWrite",
+              "createOption": "FromImage"
+            },
+            "imageReference": {
+              "publisher": "[parameters('osImagePublisher')]",
+              "offer": "[parameters('osImageOffer')]",
+              "sku": "[parameters('osImageSku')]",
+              "version": "latest"
+            }
+          },
+        "osProfile": {
+          "computerNamePrefix": "[variables('vmssName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+        },
+        "networkProfile": {
+          "networkInterfaceConfigurations": [
+            {
+              "name": "[concat(variables('vmssName'), '-master-node-nic')]",
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('masterNicName'))]"
+            }
+          ]
+        }
+      }
+      }   
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachineScaleSets",
+      "sku": {
+        "name": "[parameters('slaveNodeSku')]",
+        "tier": "Standard",
+        "capacity": "[parameters('slaveNodeCount')]"
+      },
+      "name": "[concat(variables('vmssName'), '-slave-node')]",
+      "apiVersion": "2017-12-01",
+      "location": "[parameters('location')]",
+      "tags": {
+        "AnsibleRole": "Slave",
+        "AnsibleProject": "Ansible-project",
+        "Ansible-Key": "UUID"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkInterfaces/', variables('slaveNicName'))]"
+      ],
+      "properties": {
+        "upgradePolicy": {
+          "mode": "Manual"
+        },
+        "virtualMachineProfile": {
+          "storageProfile": {
+            "osDisk": {
+              "caching": "ReadWrite",
+              "createOption": "FromImage"
+            },
+            "imageReference": {
+              "publisher": "[parameters('osImagePublisher')]",
+              "offer": "[parameters('osImageOffer')]",
+              "sku": "[parameters('osImageSku')]",
+              "version": "latest"
+            }
+          },
+        "osProfile": {
+          "computerNamePrefix": "[variables('vmssName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPasswordOrKey')]",
+          "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), json('null'), variables('linuxConfiguration'))]"
+        },
+        "networkProfile": {
+          "networkInterfaceConfigurations": [
+            { 
+              "name": "[concat(variables('vmssName'), '-slave-node-nic')]",
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('slaveNicName'))]"
+            }
+          ]
+        }   
+     }
+    }
+    }
+  ]
+  }
+
+
+
+      

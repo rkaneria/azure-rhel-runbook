@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "masterNodeCount": {
+      "value": 1
+    },
+    "masterNodeSku": {
+      "value": "Standard_A1"
+    },
+    "slaveNodeCount": {
+      "value": 2
+    },
+    "slaveNodeSku": {
+      "value": "Standard_A1"
+    },
+    "adminUsername": {
+      "value": "GEN-UNIQUE"
+    },
+    "osImagePublisher": {
+      "value": "RedHat"
+    },
+    "osImageOffer": {
+      "value": "RHEL"
+    },
+    "osImageSku": {
+      "value": "7.7"
+    },
+    "adminPasswordOrKey": {
+      "value": "GEN-SSH-PUB-KEY"
+    }
+  }
+}
